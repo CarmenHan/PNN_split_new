@@ -71,7 +71,7 @@ class PNN(nn.Module):
         if self.use_cuda:
             self.cuda()
 
-    def freeze_columns(self, skip=[0,1,2]):
+    def freeze_columns(self, skip=None):
         if skip == None:
             skip = []
 

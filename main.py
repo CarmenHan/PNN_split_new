@@ -39,13 +39,13 @@ def get_args():
     parser.add_argument('-visdom_url', default="http://192.168.253.14", type=str, help='Visdom server url')
     parser.add_argument('-visdom_port', default=8097, type=int, help='Visdom server port') #原来为8100
 
-    parser.add_argument('--layers', metavar='L', type=int, default=4, help='Number of layers per task')
-    parser.add_argument('--sizes', dest='sizes', default=[784, 512,256,256 ,2], nargs='+',
+    parser.add_argument('--layers', metavar='L', type=int, default=3, help='Number of layers per task')
+    parser.add_argument('--sizes', dest='sizes', default=[784, 256,256 ,2], nargs='+',
                         action=LengthCheckAction)
 
     parser.add_argument('--n_tasks', dest='n_tasks', type=int, default=5)
-    parser.add_argument('--epochs', dest='epochs', type=int, default=20)
-    parser.add_argument('--bs', dest='batch_size', type=int, default=100)
+    parser.add_argument('--epochs', dest='epochs', type=int, default=100)
+    parser.add_argument('--bs', dest='batch_size', type=int, default=256)
     parser.add_argument('--lr', dest='lr', type=float, default=5e-3, help='Optimizer learning rate')
     parser.add_argument('--wd', dest='wd', type=float, default=5e-4, help='Optimizer weight decay')
     parser.add_argument('--momentum', dest='momentum', type=float, default=1e-4, help='Optimizer momentum')
@@ -57,12 +57,14 @@ def get_args():
 def main(args):
     os.environ['CUDA_VISIBLE_DEVICES'] = str(args['cuda'])
     viz = visdom.Visdom(server=args['visdom_url'], port=args['visdom_port'], env='PNN tests')
-
-    model = PNN(args['layers'])
     
+    model = PNN(args['layers'])
+    f1 = open('./splitted_train_results.txt','w')
+    f2 = open('./splitted_test_results.txt','w')
     tasks_data=[]
     for i in range(args['n_tasks']):
         tasks_data.append(get_splitted_MNIST(args['path'], args['batch_size'], i))
+
 
     x = torch.Tensor()
     y = torch.LongTensor()
@@ -86,6 +88,8 @@ def main(args):
 
         train_accs = []
         train_losses = []
+        
+        
         for epoch in range(args['epochs']):
             total_samples = 0
             total_loss = 0
@@ -120,19 +124,25 @@ def main(args):
                      opts={'title': 'Task {}: train accuracy'.format(task_id)})
             viz.line(np.array(train_losses), X=np.arange(epoch+1), win='tloss{}'.format(task_id),
                      opts={'title': 'Task {}: train loss'.format(task_id)})
-
+            f1.write('\n[T{}][{}/{}] Loss={}, Acc= {}'.format(task_id, epoch+1, args['epochs'], train_losses[-1],train_accs[-1]))
+        f1.write('\n')
         perfs = []
         logger.info('Evaluation after task {}:'.format(task_id))
+       
         for i in range(task_id + 1):
             _, val, test = tasks_data[i]
             val_perf = evaluate_model(model, x, y, val, task_id=i)
             test_perf = evaluate_model(model, x, y, test, task_id=i)
             perfs.append([val_perf, test_perf])
             logger.info('\tT n°{} - Val:{}%, test:{}%'.format(i, val_perf, test_perf))
+            f2.write('\nT n°{} - test:{}%'.format(i,  test_perf))
+        f2.write('\n')
+            
 
         viz.line(np.array(perfs), X=np.arange(task_id+1), win='all_task',
                      opts={'title': 'Evaluation on all tasks', 'legend': ['Val', 'Test']})
-
+    f1.close()
+    f2.close()
 
 if __name__ == '__main__':
     main(vars(get_args()))
